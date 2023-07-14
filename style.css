@@ -6,12 +6,48 @@ body {
     color: #ffffff; /* Set general text color to white */
 }
 
+nav {
+    background-color: #00264d;
+    color: #ffffff;
+    padding: 15px;
+}
+
+nav ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+nav ul li {
+    display: inline;
+    margin-right: 10px;
+}
+
+nav ul li a {
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 16px; /* Adjust this to change the size of the text in the nav bar */
+}
+
 main {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: calc(100vh);
+    height: calc(100vh - 60px);
     padding: 15px;
+}
+
+.emoji-container {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    width: 100%;
+    font-size: 120px; /* Adjust this to make the emojis larger or smaller */
+}
+
+.emoji-container a {
+    text-decoration: none;
+    color: #ffffff;
+    margin: 0 50px;
 }
 
 .inner-box {
@@ -45,18 +81,5 @@ main {
 
 .inner-box h1, .inner-box p {
     z-index: 2;
-}
-
-.emoji-container {
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    width: 50%;
-    font-size: 50px;
-}
-
-.emoji-container a {
-    text-decoration: none;
-    color: #ffffff;
 }
 
