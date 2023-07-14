@@ -94,7 +94,7 @@ main {
     }
 
     nav ul li a {
-        font-size: 30px !important; /* Use !important to ensure this style applies */
+        font-size: 70px !important; /* Use !important to ensure this style applies */
     }
 
     .emoji-container {
