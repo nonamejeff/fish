@@ -1,0 +1,70 @@
+body {
+    font-family: 'Comfortaa', cursive;
+    margin: 0;
+    padding: 0;
+    background-color: #001a33;
+    color: #ffffff; /* Set general text color to white */
+}
+
+nav {
+    background-color: #00264d;
+    color: #ffffff;
+    padding: 15px;
+}
+
+nav ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+nav ul li {
+    display: inline;
+    margin-right: 10px;
+}
+
+nav ul li a {
+    color: #ffffff;
+    text-decoration: none;
+}
+
+main {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: calc(100vh - 60px);
+    padding: 15px;
+}
+
+.inner-box {
+    position: relative;
+    background: transparent;
+    width: 95%;
+    height: 90%;
+    width: auto;
+    padding: 20px;
+    border-radius: 20px;
+    box-sizing: border-box;
+    overflow: hidden;
+    overflow-y: auto;
+    max-height: calc(100vh - 200px); /* Adjust the value as needed */
+}
+
+.inner-box::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: linear-gradient(rgba(0, 139, 139, 1), transparent);
+    z-index: -1; /* Make pseudo-element be behind the text content */
+    
+}
+
+.inner-box h2 {
+  text-align: center; /* Center align the heading */
+}
+
+.inner-box h1, .inner-box p {
+    z-index: 2;
+}
