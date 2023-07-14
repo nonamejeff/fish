@@ -92,6 +92,10 @@ main {
         align-items: center;
     }
 
+    nav ul li a {
+        font-size: 24px; /* Adjust for desired mobile size */
+    }
+
     .emoji-container {
         font-size: 100px; /* Adjust for desired mobile size */
     }
