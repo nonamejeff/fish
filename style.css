@@ -22,6 +22,7 @@ p {
     margin: 20px auto;
     max-width: 800px;
     padding: 0 20px;
+    overflow-wrap: break-word;
 }
 
 a {
@@ -49,6 +50,11 @@ iframe {
     background: #050505;
 }
 
+.audio-embed iframe {
+    aspect-ratio: auto;
+    height: 166px;
+}
+
 audio {
     display: block;
     width: min(92vw, 640px);
@@ -60,4 +66,9 @@ hr {
     margin: 28px auto;
     border: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.source-link a {
+    display: inline-block;
+    max-width: min(92vw, 800px);
 }

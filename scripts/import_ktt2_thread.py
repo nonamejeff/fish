@@ -11,7 +11,7 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
 
@@ -30,9 +30,11 @@ TIMEOUT = (15, 120)
 
 MEDIA_LINE_RE = re.compile(r"^!\s*(https?://\S+)\s*$")
 TEXT_URL_RE = re.compile(r"https?://\S+")
+QUOTE_PREFIX_RE = re.compile(r"^\s*>+\s*")
 KTT2_SIZE_SUFFIX_RE = re.compile(
     r"(?i)(\.(?:png|jpe?g|gif|webp|svg|bmp)):[^/?#]+"
 )
+ZERO_WIDTH_CHARS = "\u200b\u200c\u200d\ufeff"
 
 
 class NextDataParser(HTMLParser):
@@ -89,17 +91,41 @@ def page_url(page_number: int) -> str:
     return BASE_THREAD_URL if page_number == 1 else f"{BASE_THREAD_URL}/{page_number}"
 
 
+def strip_invisible_characters(text: str) -> str:
+    cleaned = text
+    for character in ZERO_WIDTH_CHARS:
+        cleaned = cleaned.replace(character, "")
+    return cleaned
+
+
+def normalize_paragraph_block(paragraph_lines: list[str]) -> dict[str, str] | None:
+    if not paragraph_lines:
+        return None
+
+    nonempty_lines = [line for line in paragraph_lines if line.strip()]
+    if nonempty_lines and all(QUOTE_PREFIX_RE.match(line) for line in nonempty_lines):
+        paragraph = "\n".join(
+            QUOTE_PREFIX_RE.sub("", line).strip() for line in paragraph_lines
+        )
+    else:
+        paragraph = "\n".join(line.rstrip() for line in paragraph_lines)
+
+    paragraph = strip_invisible_characters(paragraph).strip()
+    if not paragraph:
+        return None
+
+    return {"type": "text", "text": paragraph}
+
+
 def parse_blocks(text: str) -> list[dict[str, str]]:
     blocks: list[dict[str, str]] = []
     paragraph_lines: list[str] = []
 
     def flush_paragraph() -> None:
-        if not paragraph_lines:
-            return
-        paragraph = "\n".join(paragraph_lines).strip()
+        block = normalize_paragraph_block(paragraph_lines)
         paragraph_lines.clear()
-        if paragraph:
-            blocks.append({"type": "text", "text": paragraph})
+        if block:
+            blocks.append(block)
 
     for raw_line in text.replace("\r\n", "\n").split("\n"):
         stripped = raw_line.strip()
@@ -126,7 +152,7 @@ def parse_blocks(text: str) -> list[dict[str, str]]:
 
 
 def normalize_media_url(url: str) -> str:
-    cleaned = url.strip().replace("\u200b", "")
+    cleaned = strip_invisible_characters(url.strip())
     cleaned = KTT2_SIZE_SUFFIX_RE.sub(r"\1", cleaned)
 
     parsed = urlparse(cleaned)
@@ -156,9 +182,24 @@ def youtube_id(url: str) -> str | None:
     return None
 
 
+def soundcloud_embed_url(url: str) -> str | None:
+    host = urlparse(url).netloc.lower()
+    if "soundcloud.com" not in host:
+        return None
+    return (
+        "https://w.soundcloud.com/player/?url="
+        f"{quote(url, safe='')}"
+        "&color=%23050505&auto_play=false&hide_related=false"
+        "&show_comments=false&show_user=true&show_reposts=false"
+        "&show_teaser=false&visual=false"
+    )
+
+
 def classify_url_kind(url: str) -> str:
     if youtube_id(url):
         return "youtube"
+    if soundcloud_embed_url(url):
+        return "soundcloud"
 
     suffix = Path(urlparse(url).path).suffix.lower()
     if suffix in {".mp4", ".webm", ".mov", ".m4v", ".ogv"}:
@@ -195,7 +236,28 @@ def kind_from_content_type(content_type: str, fallback_url: str) -> str:
         return "video"
     if suffix in {".mp3", ".wav", ".ogg", ".m4a"}:
         return "audio"
-    return "image"
+    return "link"
+
+
+def is_downloadable_media_response(content_type: str) -> bool:
+    normalized = content_type.split(";")[0].strip().lower()
+    return (
+        normalized.startswith("image/")
+        or normalized.startswith("video/")
+        or normalized.startswith("audio/")
+    )
+
+
+def cleanup_import_dir(media_map: dict[str, dict[str, str]]) -> None:
+    referenced_files = {
+        meta["src"].split("/", 1)[1]
+        for meta in media_map.values()
+        if meta.get("src", "").startswith("imported/")
+    }
+
+    for path in IMPORT_DIR.iterdir():
+        if path.is_file() and path.name not in referenced_files:
+            path.unlink()
 
 
 def download_media(
@@ -218,6 +280,15 @@ def download_media(
             }
             continue
 
+        soundcloud_url = soundcloud_embed_url(url)
+        if soundcloud_url:
+            results[url] = {
+                "kind": "soundcloud",
+                "embed_url": soundcloud_url,
+                "source_url": url,
+            }
+            continue
+
         if not download_media_files:
             results[url] = {"kind": classify_url_kind(url), "src": url, "source_url": url}
             continue
@@ -227,6 +298,13 @@ def download_media(
             with session.get(url, stream=True, timeout=TIMEOUT) as response:
                 response.raise_for_status()
                 content_type = response.headers.get("content-type", "")
+                if not is_downloadable_media_response(content_type):
+                    results[url] = {
+                        "kind": "link",
+                        "src": url,
+                        "source_url": url,
+                    }
+                    continue
                 extension = guess_extension(url, content_type)
                 filename = f"{digest}{extension}"
                 destination = IMPORT_DIR / filename
@@ -269,6 +347,15 @@ def linkify_text(text: str) -> str:
     return "".join(parts).replace("\n", "<br>\n")
 
 
+def short_link_label(url: str) -> str:
+    parsed = urlparse(url)
+    host = parsed.netloc or url
+    path_name = Path(parsed.path).name
+    if path_name:
+        return f"Open source: {host}/{path_name}"
+    return f"Open source: {host}"
+
+
 def render_block(block: dict[str, str], media_map: dict[str, dict[str, str]]) -> str:
     block_type = block["type"]
 
@@ -292,6 +379,14 @@ def render_block(block: dict[str, str], media_map: dict[str, dict[str, str]]) ->
             "</iframe></div>"
         )
 
+    if media["kind"] == "soundcloud":
+        embed_url = html.escape(media["embed_url"], quote=True)
+        return (
+            "      <div class=\"media audio-embed\">"
+            f"<iframe src=\"{embed_url}\" title=\"Fish Alien audio\" "
+            "loading=\"lazy\" allow=\"autoplay\"></iframe></div>"
+        )
+
     if media["kind"] == "video":
         return (
             "      <div class=\"media\">"
@@ -305,9 +400,10 @@ def render_block(block: dict[str, str], media_map: dict[str, dict[str, str]]) ->
         )
 
     if media["kind"] == "link":
+        label = html.escape(short_link_label(media.get("source_url", escaped_src)))
         return (
-            "      <p>"
-            f"<a href=\"{escaped_src}\" target=\"_blank\" rel=\"noreferrer\">{escaped_src}</a>"
+            "      <p class=\"source-link\">"
+            f"<a href=\"{escaped_src}\" target=\"_blank\" rel=\"noreferrer\">{label}</a>"
             "</p>"
         )
 
@@ -430,6 +526,7 @@ def run(last_page: int, download_media_files: bool) -> dict[str, Any]:
 
     media_urls = collect_media_urls(all_posts)
     media_map = download_media(session, media_urls, download_media_files)
+    cleanup_import_dir(media_map)
 
     html_output = build_html(all_posts, media_map)
     HTML_PATH.write_text(html_output, encoding="utf-8")
